@@ -31,6 +31,39 @@ export default function App() {
     }
   }, []);
 
+  const calculateActivity = (calendarData) => {
+    if (!calendarData || calendarData === "null" || calendarData === "{}") {
+      return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
+    }
+    
+    try {
+      const calendar = typeof calendarData === 'string' ? JSON.parse(calendarData) : calendarData;
+      const timestamps = Object.keys(calendar).map(Number);
+      if (timestamps.length === 0) return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
+
+      const getStr = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+      const daysSet = new Set(timestamps.map(ts => getStr(new Date(ts * 1000))));
+      const today = new Date();
+      const todayStr = getStr(today);
+      const activeToday = daysSet.has(todayStr);
+
+      let streak = 0;
+      let streakDates = new Set();
+      let checkDate = new Date();
+      if (!activeToday) checkDate.setDate(checkDate.getDate() - 1);
+
+      while (daysSet.has(getStr(checkDate))) {
+        streak++;
+        streakDates.add(getStr(checkDate));
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
+
+      return { streak, activeToday, activeDays: timestamps.length, calendar, hasData: true, streakDates };
+    } catch (e) {
+      return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
+    }
+  };
+
   const fetchProfile = async (e, overrideUsername = null) => {
     if (e) e.preventDefault();
     const username = (overrideUsername || input).trim().replace(/.*leetcode\.com\/(?:u\/)?/, '').replace(/\/.*/, '');
@@ -40,65 +73,18 @@ export default function App() {
     setError('');
 
     try {
-      // Fetch profile data (totals, etc.)
       const realRes = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`);
       const data = await realRes.json();
 
       if (data.errors || data.status === 'error' || !data.totalQuestions) {
         setError('User not found.');
         setProfileData(null);
-        return;
+      } else {
+        const streakData = calculateActivity(data.submissionCalendar);
+        setProfileData({ ...data, username, streakData });
+        setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        if (overrideUsername) localStorage.setItem('lc_saved_user', username);
       }
-
-      // Fetch unique problems solved per day from our activity API
-      let activityData = { calendar: {}, streak: 0, activeToday: false, streakDates: [] };
-      try {
-        const actRes = await fetch(`/api/activity?user=${username}`);
-        if (!actRes.ok) throw new Error('Activity API returned ' + actRes.status);
-        const actJson = await actRes.json();
-        if (!actJson.error) activityData = actJson;
-      } catch (actErr) {
-        // Fallback: use submissionCalendar if activity API fails (e.g. local dev)
-        console.warn('Activity API failed, falling back to submissionCalendar');
-        const cal = data.submissionCalendar;
-        if (cal && cal !== 'null') {
-          const parsed = typeof cal === 'string' ? JSON.parse(cal) : cal;
-          const getStr = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
-          const calendar = {};
-          Object.keys(parsed).forEach(ts => {
-            const key = getStr(new Date(Number(ts) * 1000));
-            calendar[key] = (calendar[key] || 0) + parsed[ts];
-          });
-          const today = new Date();
-          const todayStr = getStr(today);
-          const aToday = !!calendar[todayStr];
-
-          // Calculate streak from the calendar
-          let s = 0;
-          const sDates = [];
-          const checkDate = new Date();
-          if (!aToday) checkDate.setDate(checkDate.getDate() - 1);
-          while (calendar[getStr(checkDate)]) {
-            s++;
-            sDates.push(getStr(checkDate));
-            checkDate.setDate(checkDate.getDate() - 1);
-          }
-
-          activityData = { calendar, streak: s, activeToday: aToday, streakDates: sDates };
-        }
-      }
-
-      const streakData = {
-        streak: activityData.streak,
-        activeToday: activityData.activeToday,
-        calendar: activityData.calendar,
-        streakDates: new Set(activityData.streakDates || []),
-        hasData: Object.keys(activityData.calendar).length > 0,
-      };
-
-      setProfileData({ ...data, username, streakData });
-      setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      if (overrideUsername) localStorage.setItem('lc_saved_user', username);
     } catch (err) {
       setError('Connection error.');
     } finally {
@@ -111,7 +97,12 @@ export default function App() {
     if (!profileData?.streakData?.calendar) return { weeks: [], monthBreaks: [] };
     const calendar = profileData.streakData.calendar;
     const streakDates = profileData.streakData.streakDates;
-    const activityLookup = calendar; // calendar is already { "YYYY-M-D": count }
+    const activityLookup = {};
+    Object.keys(calendar).forEach(ts => {
+      const date = new Date(Number(ts) * 1000);
+      const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+      activityLookup[key] = (activityLookup[key] || 0) + Number(calendar[ts]);
+    });
 
     const currentYear = new Date().getFullYear();
     const today = new Date();
@@ -176,7 +167,12 @@ export default function App() {
     const points = [];
     const calendar = profileData.streakData.calendar;
     const streakDates = profileData.streakData.streakDates;
-    const activityLookup = calendar; // calendar is already { "YYYY-M-D": count }
+    const activityLookup = {};
+    Object.keys(calendar).forEach(ts => {
+      const date = new Date(Number(ts) * 1000);
+      const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+      activityLookup[key] = (activityLookup[key] || 0) + Number(calendar[ts]);
+    });
 
     const currentYear = new Date().getFullYear();
     const today = new Date();

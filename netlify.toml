@@ -6,11 +6,6 @@
   node_bundler = "esbuild"
 
 [[redirects]]
-  from = "/api/activity"
-  to = "/.netlify/functions/activity"
-  status = 200
-
-[[redirects]]
   from = "/api/wallpaper"
   to = "/.netlify/functions/wallpaper"
   status = 200
