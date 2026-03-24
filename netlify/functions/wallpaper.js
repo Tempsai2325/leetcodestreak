@@ -24,43 +24,57 @@ exports.handler = async function(event) {
     return { statusCode: 502, body: 'Failed to fetch LeetCode data' };
   }
 
-  // Calculate streak
-  const calendarData = data.submissionCalendar;
+  // Fetch unique accepted submissions from LeetCode GraphQL
+  let activityLookup = {};
   let streak = 0, activeToday = false;
   const streakDatesSet = new Set();
 
-  if (calendarData && calendarData !== 'null' && calendarData !== '{}') {
-    try {
+  try {
+    const gqlQuery = `{ recentAcSubmissionList(username: "${username}", limit: 2000) { title timestamp } }`;
+    const gqlRes = await fetch('https://leetcode.com/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: gqlQuery }),
+    });
+    const gqlJson = await gqlRes.json();
+    const submissions = gqlJson.data?.recentAcSubmissionList || [];
+
+    const getStr = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+
+    // Group by day and count unique problem titles
+    const dayProblems = {};
+    submissions.forEach(sub => {
+      const dayKey = getStr(new Date(Number(sub.timestamp) * 1000));
+      if (!dayProblems[dayKey]) dayProblems[dayKey] = new Set();
+      dayProblems[dayKey].add(sub.title);
+    });
+    Object.keys(dayProblems).forEach(key => {
+      activityLookup[key] = dayProblems[key].size;
+    });
+
+    // Calculate streak
+    const today2 = new Date();
+    const todayStr = getStr(today2);
+    activeToday = !!activityLookup[todayStr];
+
+    const checkDate = new Date();
+    if (!activeToday) checkDate.setDate(checkDate.getDate() - 1);
+    while (activityLookup[getStr(checkDate)]) {
+      streak++;
+      streakDatesSet.add(getStr(checkDate));
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+  } catch (e) {
+    // Fallback to submissionCalendar if GraphQL fails
+    const calendarData = data.submissionCalendar;
+    if (calendarData && calendarData !== 'null') {
       const calendar = typeof calendarData === 'string' ? JSON.parse(calendarData) : calendarData;
-      const timestamps = Object.keys(calendar).map(Number);
       const getStr = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
-      const daysSet = new Set(timestamps.map(ts => getStr(new Date(ts * 1000))));
-
-      const today = new Date();
-      const todayStr = getStr(today);
-      activeToday = daysSet.has(todayStr);
-
-      let checkDate = new Date();
-      if (!activeToday) checkDate.setDate(checkDate.getDate() - 1);
-      while (daysSet.has(getStr(checkDate))) {
-        streak++;
-        streakDatesSet.add(getStr(checkDate));
-        checkDate.setDate(checkDate.getDate() - 1);
-      }
-    } catch (e) { /* streak stays 0 */ }
-  }
-
-  // Activity lookup
-  const activityLookup = {};
-  if (calendarData && calendarData !== 'null') {
-    try {
-      const calendar = typeof calendarData === 'string' ? JSON.parse(calendarData) : calendarData;
       Object.keys(calendar).forEach(ts => {
-        const date = new Date(Number(ts) * 1000);
-        const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+        const key = getStr(new Date(Number(ts) * 1000));
         activityLookup[key] = (activityLookup[key] || 0) + Number(calendar[ts]);
       });
-    } catch (e) { /* empty */ }
+    }
   }
 
   // Build year data
