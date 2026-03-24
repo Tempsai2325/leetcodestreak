@@ -1,4 +1,5 @@
-const satori = require('satori');
+const satoriModule = require('satori');
+const satori = satoriModule.default || satoriModule;
 const { Resvg } = require('@resvg/resvg-js');
 
 exports.handler = async function(event) {
