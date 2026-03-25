@@ -237,6 +237,7 @@ exports.handler = async function(event) {
     statusCode: 200,
     headers: {
       'Content-Type': 'image/png',
+      'Content-Disposition': 'inline; filename="wallpaper.png"',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
     body: Buffer.from(pngBuffer).toString('base64'),
