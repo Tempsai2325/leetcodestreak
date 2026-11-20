@@ -21,6 +21,20 @@ const detectSize = () => {
 
 const clean = (v) => v.trim().replace(/^@/, '').replace(/.*(?:leetcode\.com\/(?:u\/)?|github\.com\/|codeforces\.com\/profile\/)/, '').replace(/\/.*/, '');
 
+
+// Wallpaper URL for given usernames. previewWidth gives a smaller copy for the on-page preview.
+const wallUrl = (sub, size, previewWidth) => {
+  const q = new URLSearchParams();
+  if (sub.lc) q.set('lc', sub.lc);
+  if (sub.gh) q.set('gh', sub.gh);
+  if (sub.cf) q.set('cf', sub.cf);
+  const w = previewWidth ? Math.min(previewWidth, size.width) : size.width;
+  q.set('width', w);
+  q.set('height', previewWidth ? Math.round((size.height / size.width) * w) : size.height);
+  q.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata');
+  return `${window.location.origin}/api/wallpaper?${q}`;
+};
+
 const STORAGE = 'streakwall_users';
 const isDesktop = () => !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -54,17 +68,9 @@ function Setup({ params }) {
   const [desktop] = useState(isDesktop);
   const [qr, setQr] = useState('');
 
-  const wallpaperUrl = useMemo(() => {
-    if (!submitted) return '';
-    const q = new URLSearchParams();
-    if (submitted.lc) q.set('lc', submitted.lc);
-    if (submitted.gh) q.set('gh', submitted.gh);
-    if (submitted.cf) q.set('cf', submitted.cf);
-    q.set('width', size.width);
-    q.set('height', size.height);
-    q.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata');
-    return `${window.location.origin}/api/wallpaper?${q}`;
-  }, [submitted, size]);
+  const wallpaperUrl = useMemo(() => (submitted ? wallUrl(submitted, size) : ''), [submitted, size]);
+  // The page preview only needs a small image: half size renders and downloads ~4x faster.
+  const previewUrl = useMemo(() => (submitted ? wallUrl(submitted, size, 540) : ''), [submitted, size]);
 
   // On a computer, the macro must end up on the phone: show a QR that opens this page there.
   useEffect(() => {
@@ -91,6 +97,8 @@ function Setup({ params }) {
     const keys = { lc: 'leetcode', gh: 'github', cf: 'codeforces' };
     try {
       const q = new URLSearchParams(Object.entries(next).filter(([, v]) => v));
+      // Start rendering the preview while the usernames are checked, so both happen at once.
+      new Image().src = wallUrl(next, size, 540);
       const res = await fetch(`/api/stats?${q}`);
       const data = res.ok ? await res.json() : null;
       const errs = {};
@@ -117,7 +125,7 @@ function Setup({ params }) {
     const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
     if (![next.lc, next.gh, next.cf].some((v) => v.length >= 3)) return;
     if (submitted && next.lc === submitted.lc && next.gh === submitted.gh && next.cf === submitted.cf) return;
-    const t = setTimeout(() => submit(null, true), 900);
+    const t = setTimeout(() => submit(null, true), 600);
     return () => clearTimeout(t);
   }, [lc, gh, cf]); // eslint-disable-line
 
@@ -200,8 +208,8 @@ function Setup({ params }) {
                   <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10 border border-zinc-900" />
                   {submitted ? (
                     <img
-                      key={wallpaperUrl}
-                      src={wallpaperUrl}
+                      key={previewUrl}
+                      src={previewUrl}
                       alt="Your wallpaper preview"
                       className={`sw-reveal w-full h-full object-cover transition-opacity duration-500 ${status === 'loading' ? 'opacity-40' : 'opacity-100'}`}
                       onLoad={() => { setStatus('ok'); if (scrollOnLoad.current && window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); scrollOnLoad.current = false; }}

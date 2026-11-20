@@ -12,7 +12,15 @@ const { buildStats } = require('./lib/stats');
 let FONTS = null; // cached across warm invocations
 async function loadFonts() {
   if (FONTS) return FONTS;
-  const get = (w) => fetch(`https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-${w}-normal.woff`).then((r) => r.arrayBuffer());
+  // Fonts ship with the function (no network on cold start); fall back to the CDN if missing.
+  const fs = require('fs');
+  const path = require('path');
+  const get = async (w) => {
+    for (const dir of [path.join(__dirname, 'fonts'), path.join(process.cwd(), 'netlify/functions/fonts')]) {
+      try { return fs.readFileSync(path.join(dir, `inter-${w}.woff`)); } catch {}
+    }
+    return fetch(`https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-${w}-normal.woff`).then((r) => r.arrayBuffer());
+  };
   const [w500, w700, w900] = await Promise.all([get(500), get(700), get(900)]);
   FONTS = [
     { name: 'Inter', data: w500, weight: 500, style: 'normal' },
@@ -36,17 +44,19 @@ function render(stats, { width, height, tz }) {
       ? { text: `RESET IN ${stats.hoursToReset}H`, fg: '#ef4444', bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.5)' }
       : { text: 'NOT YET TODAY', fg: '#f59e0b', bg: 'rgba(245,158,11,0.12)', bd: 'rgba(245,158,11,0.4)' };
 
-  const bigNumber = (value, label, color) => h({ flexDirection: 'column', alignItems: 'center' }, [
-    h({ fontSize: px(190), fontWeight: 900, lineHeight: 1, color, letterSpacing: px(-6) }, `${value}`),
-    h({ fontSize: px(26), fontWeight: 700, letterSpacing: px(6), color: '#6b6b6b', marginTop: px(18) }, label),
-  ]);
+  // Big numbers: streak, then LeetCode solved and GitHub commits when connected (Codeforces rating if neither).
+  const extras = [];
+  if (stats.leetcode) extras.push({ value: stats.leetcode.solved, label: 'SOLVED', color: '#facc15' });
+  if (stats.github) extras.push({ value: stats.github.total, label: 'COMMITS', color: '#e5e5e5' });
+  if (!extras.length && stats.codeforces) extras.push({ value: stats.codeforces.rating || 0, label: 'RATING', color: '#60a5fa' });
+  const three = extras.length >= 2;
+  const numSize = three ? 140 : 190;
 
-  // Second big number: LeetCode solved if connected, otherwise GitHub contributions.
-  const second = stats.leetcode
-    ? { value: stats.leetcode.solved, label: 'SOLVED' }
-    : stats.github
-      ? { value: stats.github.total, label: 'COMMITS' }
-      : { value: stats.codeforces.rating, label: 'RATING' };
+  const bigNumber = (value, label, color) => h({ flexDirection: 'column', alignItems: 'center' }, [
+    h({ fontSize: px(numSize), fontWeight: 900, lineHeight: 1, color, letterSpacing: px(three ? -4 : -6) }, `${value}`),
+    h({ fontSize: px(three ? 22 : 26), fontWeight: 700, letterSpacing: px(three ? 4 : 6), color: '#6b6b6b', marginTop: px(18) }, label),
+  ]);
+  const divider = () => h({ width: px(2), height: px(three ? 130 : 170), background: '#2a2a2a', margin: `0 ${px(three ? 38 : 60)}` });
 
   // Heatmap: current year; column count chosen below to fill the screen.
   // Size cells to fit BOTH the width and the height left after the other blocks.
@@ -119,8 +129,7 @@ function render(stats, { width, height, tz }) {
     // Big numbers
     h({ alignItems: 'center', justifyContent: 'center', marginTop: px(50) }, [
       bigNumber(streak, 'DAY STREAK', activeToday ? '#ffffff' : pill.fg),
-      h({ width: px(2), height: px(170), background: '#2a2a2a', margin: `0 ${px(60)}` }),
-      bigNumber(second.value, second.label, '#facc15'),
+      ...extras.flatMap((e) => [divider(), bigNumber(e.value, e.label, e.color)]),
     ]),
     // Year header
     h({ justifyContent: 'space-between', width: `${gridW + 4}px`, marginTop: px(60), marginBottom: px(20), padding: `0 ${px(8)}` }, [
