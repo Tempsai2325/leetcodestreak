@@ -53,8 +53,8 @@ function render(stats, { width, height, tz }) {
   const gap = Math.round(7 * s);
   const gridPad = Math.round(28 * s);
   const sidePad = Math.round(width * 0.05);
-  // Top ~17% stays clear for the lock-screen clock; everything else is used.
-  const topPad = Math.round(height * 0.17);
+  // Top ~11% stays clear for the lock-screen clock; everything else is used.
+  const topPad = Math.round(height * 0.11);
   const bottomPad = Math.round(height * 0.035);
   const availH = height - topPad - bottomPad - Math.round(680 * s) - 2 * gridPad;
   // Pick the column count that gives the biggest cells, so the heatmap fills the screen.
