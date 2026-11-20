@@ -1,686 +1,232 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Trophy, Activity, Smartphone as MobileIcon, Zap, Clock } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, Download, GitBranch as Github } from 'lucide-react';
+import { downloadMacro } from './macro';
 
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// ── Helpers ─────────────────────────────────────────────────
+const detectOS = () => {
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  return 'android'; // iPhone is coming soon, so default to Android
+};
+
+// Real pixel size of this phone's screen (portrait). Desktop falls back to a common phone size.
+const detectSize = () => {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(Math.min(screen.width, screen.height) * dpr);
+  const h = Math.round(Math.max(screen.width, screen.height) * dpr);
+  const isPhone = /iPhone|Android/i.test(navigator.userAgent);
+  return isPhone ? { width: w, height: h } : { width: 1080, height: 2400 };
+};
+
+const clean = (v) => v.trim().replace(/^@/, '').replace(/.*(?:leetcode\.com\/(?:u\/)?|github\.com\/|codeforces\.com\/profile\/)/, '').replace(/\/.*/, '');
+
+const STORAGE = 'streakwall_users';
 
 export default function App() {
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [profileData, setProfileData] = useState(null);
-  const [viewMode, setViewMode] = useState('dashboard');
-  const [lastSync, setLastSync] = useState('');
-  const [wpWidth, setWpWidth] = useState(1080);
-  const [wpHeight, setWpHeight] = useState(2400);
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode') === 'wallpaper' ? <LegacyWallpaper params={params} /> : <Setup params={params} />;
+}
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const modeParam = params.get('mode');
-    const userParam = params.get('user');
-    const widthParam = params.get('width');
-    const heightParam = params.get('height');
-
-    if (modeParam === 'wallpaper') setViewMode('wallpaper');
-    if (widthParam) setWpWidth(parseInt(widthParam, 10));
-    if (heightParam) setWpHeight(parseInt(heightParam, 10));
-    
-    const saved = userParam || localStorage.getItem('lc_saved_user');
-    if (saved) {
-      setInput(saved);
-      fetchProfile(null, saved);
-    }
-  }, []);
-
-  const calculateActivity = (calendarData) => {
-    if (!calendarData || calendarData === "null" || calendarData === "{}") {
-      return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
-    }
-    
-    try {
-      const calendar = typeof calendarData === 'string' ? JSON.parse(calendarData) : calendarData;
-      const timestamps = Object.keys(calendar).map(Number);
-      if (timestamps.length === 0) return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
-
-      const getStr = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
-      const daysSet = new Set(timestamps.map(ts => getStr(new Date(ts * 1000))));
-      const today = new Date();
-      const todayStr = getStr(today);
-      const activeToday = daysSet.has(todayStr);
-
-      let streak = 0;
-      let streakDates = new Set();
-      let checkDate = new Date();
-      if (!activeToday) checkDate.setDate(checkDate.getDate() - 1);
-
-      while (daysSet.has(getStr(checkDate))) {
-        streak++;
-        streakDates.add(getStr(checkDate));
-        checkDate.setDate(checkDate.getDate() - 1);
-      }
-
-      return { streak, activeToday, activeDays: timestamps.length, calendar, hasData: true, streakDates };
-    } catch (e) {
-      return { streak: 0, activeToday: false, activeDays: 0, calendar: {}, hasData: false, streakDates: new Set() };
-    }
-  };
-
-  const fetchProfile = async (e, overrideUsername = null) => {
-    if (e) e.preventDefault();
-    const username = (overrideUsername || input).trim().replace(/.*leetcode\.com\/(?:u\/)?/, '').replace(/\/.*/, '');
-    if (!username) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const realRes = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`);
-      const data = await realRes.json();
-
-      if (data.errors || data.status === 'error' || !data.totalQuestions) {
-        setError('User not found.');
-        setProfileData(null);
-      } else {
-        const streakData = calculateActivity(data.submissionCalendar);
-        setProfileData({ ...data, username, streakData });
-        setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        if (overrideUsername) localStorage.setItem('lc_saved_user', username);
-      }
-    } catch (err) {
-      setError('Connection error.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Build the full year data organized by weeks (columns) like GitHub/LeetCode heatmap
-  const yearGridData = useMemo(() => {
-    if (!profileData?.streakData?.calendar) return { weeks: [], monthBreaks: [] };
-    const calendar = profileData.streakData.calendar;
-    const streakDates = profileData.streakData.streakDates;
-    const activityLookup = {};
-    Object.keys(calendar).forEach(ts => {
-      const date = new Date(Number(ts) * 1000);
-      const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
-      activityLookup[key] = (activityLookup[key] || 0) + Number(calendar[ts]);
-    });
-
-    const currentYear = new Date().getFullYear();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Start from Jan 1
-    const jan1 = new Date(currentYear, 0, 1);
-    const startDay = jan1.getDay(); // 0=Sun
-
-    const allDays = [];
-    // Add empty padding for the first week
-    for (let i = 0; i < startDay; i++) {
-      allDays.push(null);
-    }
-
-    for (let m = 0; m < 12; m++) {
-      const daysInMonth = new Date(currentYear, m + 1, 0).getDate();
-      for (let d = 1; d <= daysInMonth; d++) {
-        const curr = new Date(currentYear, m, d);
-        const key = `${currentYear}-${m + 1}-${d}`;
-        allDays.push({
-          date: curr,
-          month: m,
-          day: d,
-          count: activityLookup[key] || 0,
-          isStreak: streakDates.has(key),
-          isFuture: curr > today,
-          isToday: curr.getTime() === today.getTime()
-        });
-      }
-    }
-
-    // Organize into weeks (columns of 7)
-    const weeks = [];
-    for (let i = 0; i < allDays.length; i += 7) {
-      weeks.push(allDays.slice(i, i + 7));
-    }
-    // Pad last week
-    while (weeks.length > 0 && weeks[weeks.length - 1].length < 7) {
-      weeks[weeks.length - 1].push(null);
-    }
-
-    // Find month boundaries for labels
-    const monthBreaks = [];
-    let lastMonth = -1;
-    weeks.forEach((week, wi) => {
-      for (const day of week) {
-        if (day && day.month !== lastMonth) {
-          monthBreaks.push({ weekIndex: wi, month: day.month });
-          lastMonth = day.month;
-          break;
-        }
-      }
-    });
-
-    return { weeks, monthBreaks };
-  }, [profileData]);
-
-  // Flat year data for the wallpaper grid
-  const fullYearData = useMemo(() => {
-    if (!profileData?.streakData?.calendar) return [];
-    const points = [];
-    const calendar = profileData.streakData.calendar;
-    const streakDates = profileData.streakData.streakDates;
-    const activityLookup = {};
-    Object.keys(calendar).forEach(ts => {
-      const date = new Date(Number(ts) * 1000);
-      const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
-      activityLookup[key] = (activityLookup[key] || 0) + Number(calendar[ts]);
-    });
-
-    const currentYear = new Date().getFullYear();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let m = 0; m < 12; m++) {
-      const daysInMonth = new Date(currentYear, m + 1, 0).getDate();
-      for (let d = 1; d <= daysInMonth; d++) {
-        const curr = new Date(currentYear, m, d);
-        const key = `${currentYear}-${m + 1}-${d}`;
-        points.push({
-          date: curr,
-          month: m,
-          count: activityLookup[key] || 0,
-          isStreak: streakDates.has(key),
-          isFuture: curr > today,
-          isToday: curr.getTime() === today.getTime()
-        });
-      }
-    }
-    return points;
-  }, [profileData]);
-
-  // ─── WALLPAPER MODE ─────────────────────────────────────────
-  // Renders at exact pixel dimensions (from URL params: ?width=1080&height=2400)
-  // and scales to fit the browser viewport. MacroDroid screenshots this.
-  if (viewMode === 'wallpaper' && profileData) {
-    const streak = profileData.streakData.streak;
-    const activeToday = profileData.streakData.activeToday;
-    const solved = profileData.totalSolved;
-    const total = profileData.totalQuestions;
-    const pct = Math.round((solved / total) * 100);
-    const currentYear = new Date().getFullYear();
-
-    // Difficulty breakdown
-    const easy = profileData.easySolved || 0;
-    const medium = profileData.mediumSolved || 0;
-    const hard = profileData.hardSolved || 0;
-
-    // Compute day of year
-    const now = new Date();
-    const startOfYear = new Date(now.getFullYear(), 0, 0);
-    const diff = now - startOfYear;
-    const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    // Scale factor: fit the canvas into the browser viewport
-    const scaleX = window.innerWidth / wpWidth;
-    const scaleY = window.innerHeight / wpHeight;
-    const scale = Math.min(scaleX, scaleY);
-
+function LegacyWallpaper({ params }) {
+  // Legacy links (?mode=wallpaper&user=...) keep working: show the PNG full screen.
+  {
+    const q = new URLSearchParams({ lc: params.get('user') || '', width: params.get('width') || 1080, height: params.get('height') || 2400 });
     return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        background: '#000000',
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      <div
-        id="wallpaper-capture"
-        style={{
-          width: `${wpWidth}px`,
-          height: `${wpHeight}px`,
-          background: '#000000',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: `${wpHeight * 0.04}px ${wpWidth * 0.05}px ${wpHeight * 0.025}px`,
-          fontFamily: "'Inter', 'SF Pro Display', -apple-system, sans-serif",
-          color: '#ffffff',
-          overflow: 'hidden',
-          boxSizing: 'border-box',
-          transform: `scale(${scale})`,
-          transformOrigin: 'center center',
-          flexShrink: 0,
-        }}
-      >
-        {/* ── TOP SECTION: Streak hero ── */}
-        <div style={{ textAlign: 'center', width: '100%' }}>
-          {/* Status pill */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '16px 44px',
-            borderRadius: '100px',
-            background: activeToday ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-            border: `2px solid ${activeToday ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
-            marginBottom: '30px',
-          }}>
-            <div style={{
-              width: '16px', height: '16px', borderRadius: '50%',
-              background: activeToday ? '#22c55e' : '#ef4444',
-              boxShadow: activeToday ? '0 0 20px #22c55e' : '0 0 20px #ef4444',
-            }} />
-            <span style={{
-              fontSize: '28px', fontWeight: 700, letterSpacing: '0.15em',
-              textTransform: 'uppercase',
-              color: activeToday ? '#22c55e' : '#ef4444',
-            }}>
-              {activeToday ? 'SOLVED TODAY' : 'NOT SOLVED'}
-            </span>
-          </div>
-
-          {/* Streak + Solved side by side */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '60px',
-          }}>
-            {/* Streak */}
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                fontSize: '200px',
-                fontWeight: 900,
-                lineHeight: 0.9,
-                letterSpacing: '-8px',
-                background: activeToday
-                  ? 'linear-gradient(180deg, #ffffff 0%, #a3a3a3 100%)'
-                  : 'linear-gradient(180deg, #ef4444 0%, #7f1d1d 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}>
-                {streak}
-              </div>
-              <div style={{
-                fontSize: '26px',
-                fontWeight: 700,
-                letterSpacing: '0.3em',
-                textTransform: 'uppercase',
-                color: '#525252',
-                marginTop: '20px',
-              }}>
-                STREAK
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div style={{
-              width: '2px',
-              height: '180px',
-              background: 'linear-gradient(180deg, transparent, #333, transparent)',
-            }} />
-
-            {/* Solved */}
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                fontSize: '200px',
-                fontWeight: 900,
-                lineHeight: 0.9,
-                letterSpacing: '-8px',
-                background: 'linear-gradient(180deg, #facc15 0%, #a16207 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}>
-                {solved}
-              </div>
-              <div style={{
-                fontSize: '26px',
-                fontWeight: 700,
-                letterSpacing: '0.3em',
-                textTransform: 'uppercase',
-                color: '#525252',
-                marginTop: '20px',
-              }}>
-                SOLVED
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── MIDDLE SECTION: Heatmap Grid ── */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '100%',
-          padding: '30px 0',
-        }}>
-          {/* Year label */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            width: '100%',
-            marginBottom: '30px',
-            padding: '0 10px',
-          }}>
-            <span style={{ fontSize: '28px', fontWeight: 700, color: '#404040', letterSpacing: '0.1em' }}>
-              {currentYear}
-            </span>
-            <span style={{ fontSize: '26px', fontWeight: 600, color: '#404040' }}>
-              DAY {dayOfYear} / 365
-            </span>
-          </div>
-
-          {/* The actual heatmap — 15 columns to fit well on 1080px */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(15, 1fr)',
-            gap: '6px',
-            width: '100%',
-            padding: '36px',
-            background: 'rgba(255,255,255,0.02)',
-            borderRadius: '48px',
-            border: '2px solid rgba(255,255,255,0.04)',
-          }}>
-            {fullYearData.map((day, i) => {
-              let bg = '#161616';
-              let shadow = 'none';
-              let cellBorder = 'none';
-
-              if (day.isFuture) {
-                bg = 'transparent';
-                cellBorder = '2px solid #1a1a1a';
-              } else if (day.count > 0) {
-                if (day.isStreak) {
-                  const intensity = Math.min(day.count / 5, 1);
-                  bg = `rgba(250, 204, 21, ${0.6 + intensity * 0.4})`;
-                  shadow = `0 0 ${12 + intensity * 16}px rgba(250, 204, 21, ${0.3 + intensity * 0.4})`;
-                } else {
-                  const intensity = Math.min(day.count / 5, 1);
-                  bg = `rgba(34, 197, 94, ${0.25 + intensity * 0.45})`;
-                }
-              }
-
-              if (day.isToday) {
-                cellBorder = '3px solid #ffffff';
-                shadow = '0 0 24px rgba(255,255,255,0.3)';
-              }
-
-              return (
-                <div
-                  key={i}
-                  style={{
-                    aspectRatio: '1',
-                    borderRadius: '6px',
-                    background: bg,
-                    boxShadow: shadow,
-                    border: cellBorder,
-                  }}
-                />
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '40px',
-            marginTop: '30px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: '#161616' }} />
-              <span style={{ fontSize: '20px', color: '#525252', fontWeight: 600 }}>No Activity</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: 'rgba(34,197,94,0.5)' }} />
-              <span style={{ fontSize: '20px', color: '#525252', fontWeight: 600 }}>Active</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: '#facc15', boxShadow: '0 0 12px rgba(250,204,21,0.5)' }} />
-              <span style={{ fontSize: '20px', color: '#525252', fontWeight: 600 }}>Streak</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── BOTTOM SECTION: Stats ── */}
-        <div style={{ width: '100%' }}>
-          {/* Progress bar */}
-          <div style={{
-            width: '100%',
-            height: '10px',
-            background: '#1a1a1a',
-            borderRadius: '100px',
-            overflow: 'hidden',
-            marginBottom: '24px',
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${pct}%`,
-              background: activeToday
-                ? 'linear-gradient(90deg, #facc15, #f59e0b)'
-                : 'linear-gradient(90deg, #ef4444, #dc2626)',
-              borderRadius: '100px',
-            }} />
-          </div>
-
-          {/* Stats row */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '20px',
-            marginBottom: '24px',
-          }}>
-            {[
-              { label: 'SOLVED', value: solved, color: '#ffffff' },
-              { label: 'EASY', value: easy, color: '#22c55e' },
-              { label: 'MED', value: medium, color: '#f59e0b' },
-              { label: 'HARD', value: hard, color: '#ef4444' },
-            ].map((stat, i) => (
-              <div key={i} style={{
-                textAlign: 'center',
-                padding: '20px 10px',
-                background: 'rgba(255,255,255,0.02)',
-                borderRadius: '28px',
-                border: '2px solid rgba(255,255,255,0.04)',
-              }}>
-                <div style={{
-                  fontSize: '48px', fontWeight: 800,
-                  color: stat.color,
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
-                  {stat.value}
-                </div>
-                <div style={{
-                  fontSize: '18px', fontWeight: 700,
-                  color: '#525252', letterSpacing: '0.1em',
-                  marginTop: '6px',
-                }}>
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Footer */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            opacity: 0.25,
-          }}>
-            <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '0.1em' }}>
-              @{profileData.username}
-            </span>
-            <span style={{ fontSize: '20px', fontWeight: 600 }}>
-              SYNCED {lastSync}
-            </span>
-          </div>
-
-          {/* Exit button — only visible in browser, hidden in MacroDroid screenshot */}
-          <div style={{ textAlign: 'center', marginTop: '20px' }}>
-            <button
-              onClick={() => setViewMode('dashboard')}
-              style={{
-                fontSize: '22px',
-                color: '#404040',
-                textTransform: 'uppercase',
-                letterSpacing: '0.2em',
-                fontWeight: 700,
-                background: 'none',
-                border: '2px solid #262626',
-                padding: '20px 60px',
-                borderRadius: '100px',
-                cursor: 'pointer',
-              }}
-            >
-              Exit Wallpaper
-            </button>
-          </div>
-        </div>
-      </div>
+      <div className="w-screen h-screen bg-black flex items-center justify-center">
+        <img src={`/api/wallpaper?${q}`} alt="wallpaper" className="max-h-screen max-w-full object-contain" />
       </div>
     );
   }
+}
 
-  // ─── DASHBOARD MODE ─────────────────────────────────────────
+function Setup({ params }) {
+  const saved = JSON.parse(localStorage.getItem(STORAGE) || '{}');
+  const [lc, setLc] = useState(saved.lc || params.get('lc') || params.get('user') || '');
+  const [gh, setGh] = useState(saved.gh || params.get('gh') || '');
+  const [cf, setCf] = useState(saved.cf || params.get('cf') || '');
+  const [size] = useState(detectSize);
+  const [os, setOs] = useState(detectOS);
+  const [submitted, setSubmitted] = useState(null);
+  const [status, setStatus] = useState('idle'); // idle | loading | ok | error
+  const [copied, setCopied] = useState(false);
+
+  const wallpaperUrl = useMemo(() => {
+    if (!submitted) return '';
+    const q = new URLSearchParams();
+    if (submitted.lc) q.set('lc', submitted.lc);
+    if (submitted.gh) q.set('gh', submitted.gh);
+    if (submitted.cf) q.set('cf', submitted.cf);
+    q.set('width', size.width);
+    q.set('height', size.height);
+    q.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata');
+    return `${window.location.origin}/api/wallpaper?${q}`;
+  }, [submitted, size]);
+
+  const submit = (e) => {
+    e?.preventDefault();
+    const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
+    if (!next.lc && !next.gh && !next.cf) return;
+    localStorage.setItem(STORAGE, JSON.stringify(next));
+    setStatus('loading');
+    setSubmitted(next);
+  };
+
+  useEffect(() => { if (saved.lc || saved.gh || saved.cf) submit(); }, []); // eslint-disable-line
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(wallpaperUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-200 font-sans p-4 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+    <div className="min-h-screen bg-black text-zinc-200 font-sans">
+      <div className="max-w-5xl mx-auto px-5 py-10 md:py-16">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-500 rounded-lg">
-              <Trophy className="w-6 h-6 text-black" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white leading-none tracking-tight">LeetCode Guardian</h1>
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Status: {profileData?.streakData?.activeToday ? 'Verified' : 'Unsolved'}</p>
+            <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center"><Zap className="w-5 h-5 text-black" /></div>
+            <span className="text-xl font-black text-white tracking-tight">StreakWall</span>
+          </div>
+          <a href="https://github.com/Tempsai2325/leetcodestreak" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white">
+            <Github className="w-4 h-4" /> Open source
+          </a>
+        </header>
+
+        <div className="grid md:grid-cols-2 gap-12 items-start">
+          {/* Left: pitch + form */}
+          <div>
+            <h1 className="text-4xl md:text-5xl font-black text-white leading-tight tracking-tight">
+              Your dev grind,<br /><span className="text-green-500">on your lock screen.</span>
+            </h1>
+            <p className="mt-4 text-zinc-400">
+              A live wallpaper with your coding streak across LeetCode, GitHub and Codeforces. It turns red before the daily reset so you never break the chain.
+            </p>
+
+            <form onSubmit={submit} className="mt-8 space-y-3">
+              <Field icon={<Trophy className="w-4 h-4 text-yellow-400" />} placeholder="LeetCode username" value={lc} onChange={setLc} />
+              <Field icon={<Github className="w-4 h-4 text-zinc-300" />} placeholder="GitHub username (optional)" value={gh} onChange={setGh} />
+              <Field icon={<Code2 className="w-4 h-4 text-blue-400" />} placeholder="Codeforces handle (optional)" value={cf} onChange={setCf} />
+              <button className="w-full bg-green-500 hover:bg-green-400 text-black font-bold py-3.5 rounded-xl transition">
+                Make my wallpaper
+              </button>
+            </form>
+
+            {/* Trust line */}
+            <div className="mt-6 flex items-start gap-3 text-sm text-zinc-400 bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+              <ShieldCheck className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+              <span><b className="text-zinc-200">No login. No password. No tracking.</b> We only read your public profile stats. Your usernames stay on this device.</span>
             </div>
           </div>
-          <div className="flex gap-2">
-            {profileData && (
-              <button onClick={() => setViewMode('wallpaper')} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-zinc-800"><MobileIcon className="w-4 h-4 text-yellow-500" /> Wallpaper Mode</button>
+
+          {/* Right: preview + setup */}
+          <div>
+            <div className="mx-auto w-[260px] rounded-[2.6rem] border-[6px] border-zinc-800 bg-black overflow-hidden aspect-[9/19.5] flex items-center justify-center">
+              {submitted ? (
+                <img
+                  key={wallpaperUrl}
+                  src={wallpaperUrl}
+                  alt="Your wallpaper preview"
+                  className={`w-full h-full object-cover transition-opacity ${status === 'loading' ? 'opacity-30' : 'opacity-100'}`}
+                  onLoad={() => setStatus('ok')}
+                  onError={() => setStatus('error')}
+                />
+              ) : (
+                <span className="text-zinc-600 text-sm px-8 text-center">Your preview shows up here</span>
+              )}
+            </div>
+            {status === 'loading' && <p className="text-center text-sm text-zinc-500 mt-3">Building your wallpaper…</p>}
+            {status === 'error' && <p className="text-center text-sm text-red-400 mt-3">Couldn't find that profile. Check the username.</p>}
+
+            {status === 'ok' && (
+              <div className="mt-8 bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                <div className="flex gap-2 mb-5">
+                  <Tab active={os === 'android'} onClick={() => setOs('android')} icon={<Smartphone className="w-4 h-4" />}>Android</Tab>
+                  <Tab active={os === 'ios'} onClick={() => setOs('ios')} icon={<Apple className="w-4 h-4" />}>iPhone <span className="ml-1 text-[10px] font-bold uppercase bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded">Soon</span></Tab>
+                </div>
+
+                {os === 'android' && (
+                  <button onClick={() => downloadMacro(wallpaperUrl)} className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 text-black font-bold py-3 rounded-xl mb-3">
+                    <Download className="w-4 h-4" /> Download for Android
+                  </button>
+                )}
+                {os === 'ios' ? (
+                  <div className="text-center py-6">
+                    <Apple className="w-8 h-8 mx-auto text-zinc-500" />
+                    <p className="mt-3 font-bold text-white">iPhone is coming soon</p>
+                    <p className="mt-1 text-sm text-zinc-400">We're building a one-tap Shortcut. Android works today.</p>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={copy} className="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl mb-5 bg-zinc-900 text-zinc-200 border border-zinc-800">
+                      {copied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy my wallpaper link</>}
+                    </button>
+                    <Steps items={[
+                      'Install MacroDroid (free) from the Play Store.',
+                      'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
+                      'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
+                    ]} />
+                  </>
+                )}
+
+                {os === 'android' && (
+                  <details className="mt-4 text-xs text-zinc-500">
+                    <summary className="cursor-pointer text-zinc-400">Wallpaper stopped updating?</summary>
+                    <p className="mt-2">Some phones (OnePlus, Xiaomi, Samsung) put apps to sleep. Open Settings → Apps → MacroDroid → Battery and pick "Allow background activity". It still only wakes a few times a day.</p>
+                  </details>
+                )}
+
+                {os === 'android' && <div className="mt-5 flex items-center gap-2 text-xs text-zinc-500">
+                  <BatteryFull className="w-4 h-4 text-green-500" />
+                  A few tiny image downloads a day. Unchanged wallpapers download zero bytes.
+                </div>}
+              </div>
             )}
-            <form onSubmit={fetchProfile} className="relative w-full md:w-64">
-              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Username..." className="w-full bg-[#111] border border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:border-yellow-500/50" />
-              <Search className="absolute left-3.5 top-3 w-4 h-4 text-gray-600" />
-            </form>
           </div>
         </div>
 
-        {loading && (
-          <div className="text-center py-20">
-            <div className="inline-block w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-gray-500 mt-4">Fetching profile...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="text-center py-20">
-            <p className="text-red-500 text-sm font-bold">{error}</p>
-          </div>
-        )}
-
-        {profileData && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 space-y-6">
-              <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl relative overflow-hidden group">
-                <h2 className="text-2xl font-black text-white mb-1">@{profileData.username}</h2>
-                <div className="text-yellow-500 text-xs font-bold mb-6">Rank #{profileData.ranking?.toLocaleString()}</div>
-                <div className="h-1.5 w-full bg-gray-900 rounded-full overflow-hidden">
-                  <div className="h-full bg-yellow-500 transition-all duration-1000" style={{ width: `${(profileData.totalSolved / profileData.totalQuestions) * 100}%` }}></div>
-                </div>
-              </div>
-              <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl shadow-xl">
-                <div className="flex items-center gap-2 mb-4"><MobileIcon className="w-5 h-5 text-yellow-500" /><span className="font-bold text-sm text-white">MacroDroid Setup</span></div>
-                <p className="text-[11px] text-gray-500 leading-relaxed mb-3">
-                  Set your wallpaper to auto-update with MacroDroid. Use this URL as the webpage to screenshot:
-                </p>
-                <div className="bg-black/60 p-3 rounded-xl border border-white/5 font-mono text-[10px] text-yellow-500 break-all select-all">
-                  {window.location.origin}/?mode=wallpaper&user={profileData.username}
-                </div>
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                   <div className="bg-black/60 p-4 rounded-2xl border border-white/5 shadow-inner">
-                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Solved</p>
-                      <p className="text-2xl font-mono font-bold text-white">{profileData.totalSolved}</p>
-                   </div>
-                   <div className="bg-black/60 p-4 rounded-2xl border border-white/5 shadow-inner">
-                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Target</p>
-                      <p className={`text-2xl font-mono font-bold ${profileData.streakData.activeToday ? 'text-green-500' : 'text-red-500'}`}>{profileData.totalSolved + (profileData.streakData.activeToday ? 0 : 1)}</p>
-                   </div>
-                </div>
-              </div>
-            </div>
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-2"><Activity className="w-5 h-5 text-green-500" /><h3 className="font-bold text-sm uppercase tracking-wider text-white">Life Calendar {new Date().getFullYear()}</h3></div>
-                  <div className="text-[10px] text-gray-500 bg-gray-900 px-3 py-1 rounded-full font-bold">365 Days</div>
-                </div>
-                {/* GitHub-style heatmap with weeks as columns */}
-                <div className="overflow-x-auto">
-                  <div style={{ display: 'flex', gap: '3px', minWidth: 'max-content' }}>
-                    {yearGridData.weeks.map((week, wi) => (
-                      <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {week.map((day, di) => (
-                          <div
-                            key={di}
-                            title={day ? day.date.toDateString() : ''}
-                            style={{
-                              width: '12px',
-                              height: '12px',
-                              borderRadius: '2px',
-                              background: !day
-                                ? 'transparent'
-                                : day.isFuture
-                                  ? 'transparent'
-                                  : day.count === 0
-                                    ? '#161616'
-                                    : day.isStreak
-                                      ? '#facc15'
-                                      : `rgba(34,197,94,${0.3 + Math.min(day.count / 5, 1) * 0.5})`,
-                              border: !day
-                                ? 'none'
-                                : day.isFuture
-                                  ? '1px solid #1a1a1a'
-                                  : day.isToday
-                                    ? '2px solid #fff'
-                                    : 'none',
-                              boxShadow: day?.isStreak ? '0 0 6px rgba(250,204,21,0.3)' : 'none',
-                            }}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                  {/* Month labels */}
-                  <div style={{ display: 'flex', gap: '3px', marginTop: '6px', minWidth: 'max-content' }}>
-                    {yearGridData.weeks.map((_, wi) => {
-                      const mb = yearGridData.monthBreaks.find(b => b.weekIndex === wi);
-                      return (
-                        <div key={wi} style={{ width: '12px', textAlign: 'center' }}>
-                          {mb ? (
-                            <span style={{ fontSize: '8px', color: '#525252', fontWeight: 600 }}>
-                              {MONTH_LABELS[mb.month]}
-                            </span>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <footer className="mt-20 text-center text-xs text-zinc-600">
+          Made by students, for students. Not affiliated with LeetCode, GitHub or Codeforces.
+        </footer>
       </div>
     </div>
+  );
+}
+
+function Field({ icon, placeholder, value, onChange }) {
+  return (
+    <label className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 focus-within:border-green-500 rounded-xl px-4 py-3">
+      {icon}
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck="false"
+        className="bg-transparent outline-none w-full text-white placeholder:text-zinc-600"
+      />
+    </label>
+  );
+}
+
+function Tab({ active, onClick, icon, children }) {
+  return (
+    <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold ${active ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>
+      {icon}{children}
+    </button>
+  );
+}
+
+function Steps({ items }) {
+  return (
+    <ol className="space-y-3">
+      {items.map((t, i) => (
+        <li key={i} className="flex gap-3 text-sm text-zinc-300">
+          <span className="w-6 h-6 shrink-0 rounded-full bg-zinc-800 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+          <span>{t}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
