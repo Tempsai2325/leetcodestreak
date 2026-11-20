@@ -48,19 +48,25 @@ function render(stats, { width, height, tz }) {
       ? { value: stats.github.total, label: 'COMMITS' }
       : { value: stats.codeforces.rating, label: 'RATING' };
 
-  // Heatmap: current year, 15 columns.
+  // Heatmap: current year; column count chosen below to fill the screen.
   // Size cells to fit BOTH the width and the height left after the other blocks.
-  const cols = 21;
-  const rows = Math.ceil(stats.grid.length / cols);
   const gap = Math.round(7 * s);
-  const gridPad = Math.round(32 * s);
-  const sidePad = Math.round(width * 0.06);
-  const topPad = Math.round(height * 0.25);
-  const bottomPad = Math.round(height * 0.04);
-  const availH = height - topPad - bottomPad - Math.round(820 * s) - 2 * gridPad;
-  const cellW = Math.floor((width - 2 * sidePad - 2 * gridPad - (cols - 1) * gap) / cols);
-  const cellH = Math.floor((availH - (rows - 1) * gap) / rows);
-  const cell = Math.max(8, Math.min(cellW, cellH));
+  const gridPad = Math.round(28 * s);
+  const sidePad = Math.round(width * 0.05);
+  // Top ~17% stays clear for the lock-screen clock; everything else is used.
+  const topPad = Math.round(height * 0.17);
+  const bottomPad = Math.round(height * 0.035);
+  const availH = height - topPad - bottomPad - Math.round(680 * s) - 2 * gridPad;
+  // Pick the column count that gives the biggest cells, so the heatmap fills the screen.
+  let cols = 21, rows = 0, cell = 0;
+  for (let c = 12; c <= 24; c++) {
+    const r = Math.ceil(stats.grid.length / c);
+    const cw = Math.floor((width - 2 * sidePad - 2 * gridPad - (c - 1) * gap) / c);
+    const ch = Math.floor((availH - (r - 1) * gap) / r);
+    const size = Math.min(cw, ch);
+    if (size > cell) { cell = size; cols = c; rows = r; }
+  }
+  cell = Math.max(8, cell);
   const gridW = cols * cell + (cols - 1) * gap + 2 * gridPad;
   const cells = stats.grid.map((d) => {
     let bg = '#151515', border = 'none';
