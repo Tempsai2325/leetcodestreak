@@ -56,7 +56,10 @@ function render(stats, { width, height, tz }) {
   // Top ~11% stays clear for the lock-screen clock; everything else is used.
   const topPad = Math.round(height * 0.11);
   const bottomPad = Math.round(height * 0.035);
-  const availH = height - topPad - bottomPad - Math.round(680 * s) - 2 * gridPad;
+  // Reserve room for every row of platform chips (2 per row) so the footer never falls off.
+  const chipCount = (stats.github ? 1 : 0) + (stats.leetcode ? 2 : 0) + (stats.codeforces ? 1 : 0);
+  const extraChipRows = Math.max(0, Math.ceil(chipCount / 2) - 1);
+  const availH = height - topPad - bottomPad - Math.round((680 + 150 * extraChipRows) * s) - 2 * gridPad;
   // Pick the column count that gives the biggest cells, so the heatmap fills the screen.
   let cols = 21, rows = 0, cell = 0;
   for (let c = 12; c <= 24; c++) {
