@@ -166,9 +166,15 @@ function Setup({ params }) {
                   <Steps items={[
                     'Install MacroDroid (free) from the Play Store.',
                     'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
-                    'If MacroDroid asks, allow access to your Download folder. It updates on unlock, 4 times a day and after reboot.',
-                    'Settings → Battery → MacroDroid → Unrestricted, so your phone never pauses it.',
+                    'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
                   ]} />
+                )}
+
+                {os === 'android' && (
+                  <details className="mt-4 text-xs text-zinc-500">
+                    <summary className="cursor-pointer text-zinc-400">Wallpaper stopped updating?</summary>
+                    <p className="mt-2">Some phones (OnePlus, Xiaomi, Samsung) put apps to sleep. Open Settings → Apps → MacroDroid → Battery and pick "Allow background activity". It still only wakes a few times a day.</p>
+                  </details>
                 )}
 
                 <div className="mt-5 flex items-center gap-2 text-xs text-zinc-500">
