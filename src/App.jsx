@@ -291,7 +291,7 @@ function Setup({ params }) {
                     <Steps items={[
                       'Install MacroDroid (free) from the Play Store.',
                       desktop ? 'Scan the QR code, tap "Download for Android" on your phone, then import StreakWall.macro into MacroDroid.' : 'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
-                      'One time only: edit Set Wallpaper, choose Downloads, then tap Use this folder → Allow. MacroDroid can now save and set wallpapers automatically.',
+                      'One time only: open the macro, tap HTTP Request, tap the save folder, choose Downloads, then tap Use this folder → Allow. That one permission covers saving and setting the wallpaper.',
                     ]} />
                     <button onClick={copy} className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 transition">
                       {copied ? <><Check className="w-4 h-4 text-green-400" /> Copied</> : <><Copy className="w-4 h-4" /> Copy wallpaper link (advanced)</>}
