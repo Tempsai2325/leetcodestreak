@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, Download, GitBranch as Github, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Download, GitBranch as Github, ArrowRight } from 'lucide-react';
 import { downloadMacro } from './macro';
 import QRCode from 'qrcode';
 
@@ -137,7 +137,7 @@ function Setup({ params }) {
         {/* Header */}
         <header className="flex items-center justify-between mb-12 md:mb-16">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-green-500 flex items-center justify-center shadow-[0_0_24px_rgba(34,197,94,0.45)]"><Zap className="w-5 h-5 text-black" /></div>
+            <Logo />
             <span className="text-lg font-black text-white tracking-tight">StreakWall</span>
           </div>
           <a href="https://github.com/Tempsai2325/leetcodestreak" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600 rounded-full px-3.5 py-1.5 transition">
@@ -322,5 +322,15 @@ function Steps({ items }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+// Brand mark: a tiny streak heatmap, filling up toward today.
+function Logo() {
+  const fills = ['#262626', '#262626', '#166534', '#262626', '#15803d', '#16a34a', '#16a34a', '#22c55e', '#4ade80'];
+  return (
+    <div className="grid grid-cols-3 gap-[3px] p-1.5 rounded-lg border border-zinc-800 bg-zinc-950">
+      {fills.map((c, i) => <span key={i} className="w-[7px] h-[7px] rounded-[2px]" style={{ background: c }} />)}
+    </div>
   );
 }
