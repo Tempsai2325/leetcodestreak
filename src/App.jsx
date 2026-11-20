@@ -67,6 +67,7 @@ function Setup({ params }) {
   const [copied, setCopied] = useState(false);
   const [desktop] = useState(isDesktop);
   const [qr, setQr] = useState('');
+  const [formNotice, setFormNotice] = useState('');
 
   const wallpaperUrl = useMemo(() => (submitted ? wallUrl(submitted, size) : ''), [submitted, size]);
   // The page preview only needs a small image: half size renders and downloads ~4x faster.
@@ -90,14 +91,27 @@ function Setup({ params }) {
 
   const submit = async (e, quiet = false) => {
     e?.preventDefault?.();
+    const manual = !quiet && e != null;
     const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
-    if (!next.lc && !next.gh && !next.cf) return;
+    if (!next.lc && !next.gh && !next.cf) {
+      if (manual) setFormNotice('Enter at least one username to make your wallpaper.');
+      return;
+    }
     const target = wallUrl(next, size, 540);
     // Same wallpaper already showing: nothing to rebuild (the <img> would never fire onLoad again).
-    if (target === loadedUrl.current) { setFieldErr({}); setStatus('ok'); return; }
+    if (target === loadedUrl.current) {
+      setFieldErr({});
+      setStatus('ok');
+      if (manual) {
+        setFormNotice('Your wallpaper is ready. Preview and setup are beside the form.');
+        if (window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
     if (inFlight.current === target) return;
     inFlight.current = target;
     if (!quiet) setFieldErr({});
+    if (manual) setFormNotice('Building your wallpaper…');
     setStatus('loading');
     // Check every username before building, so a typo never fails silently.
     const names = { lc: 'LeetCode', gh: 'GitHub', cf: 'Codeforces' };
@@ -113,7 +127,7 @@ function Setup({ params }) {
         if (next[k] && (!data || !data[keys[k]])) errs[k] = `No ${names[k]} profile called "${next[k]}". Check the spelling.`;
       }
       inFlight.current = '';
-      if (Object.keys(errs).length) { if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; } setFieldErr(errs); setStatus('error'); return; }
+      if (Object.keys(errs).length) { if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; } setFieldErr(errs); setFormNotice('Check the highlighted username and try again.'); setStatus('error'); return; }
     } catch {
       inFlight.current = '';
       if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; }
@@ -134,7 +148,7 @@ function Setup({ params }) {
   // Never spin forever: after 25 s, stop and say so.
   useEffect(() => {
     if (status !== 'loading') return;
-    const t = setTimeout(() => { inFlight.current = ''; setStatus('error'); setFieldErr({ form: 'That took too long. Tap the button to try again.' }); }, 25000);
+    const t = setTimeout(() => { inFlight.current = ''; setStatus('error'); setFieldErr({ form: 'That took too long. Tap the button to try again.' }); setFormNotice(''); }, 25000);
     return () => clearTimeout(t);
   }, [status]);
 
@@ -186,13 +200,14 @@ function Setup({ params }) {
             </p>
 
             <form onSubmit={submit} className="sw-rise [animation-delay:240ms] mt-8 max-w-lg p-2 rounded-2xl bg-zinc-950/80 border border-zinc-900 backdrop-blur space-y-2">
-              <Field icon={<Trophy className="w-4 h-4 text-yellow-400" />} placeholder="LeetCode username" value={lc} onChange={(v) => { setLc(v); setFieldErr((e) => ({ ...e, lc: undefined })); }} error={fieldErr.lc} />
-              <Field icon={<Github className="w-4 h-4 text-zinc-300" />} placeholder="GitHub username" optional value={gh} onChange={(v) => { setGh(v); setFieldErr((e) => ({ ...e, gh: undefined })); }} error={fieldErr.gh} />
-              <Field icon={<Code2 className="w-4 h-4 text-blue-400" />} placeholder="Codeforces handle" optional value={cf} onChange={(v) => { setCf(v); setFieldErr((e) => ({ ...e, cf: undefined })); }} error={fieldErr.cf} />
+              <Field icon={<Trophy className="w-4 h-4 text-yellow-400" />} placeholder="LeetCode username" value={lc} onChange={(v) => { setLc(v); setFormNotice(''); setFieldErr((e) => ({ ...e, lc: undefined })); }} error={fieldErr.lc} />
+              <Field icon={<Github className="w-4 h-4 text-zinc-300" />} placeholder="GitHub username" optional value={gh} onChange={(v) => { setGh(v); setFormNotice(''); setFieldErr((e) => ({ ...e, gh: undefined })); }} error={fieldErr.gh} />
+              <Field icon={<Code2 className="w-4 h-4 text-blue-400" />} placeholder="Codeforces handle" optional value={cf} onChange={(v) => { setCf(v); setFormNotice(''); setFieldErr((e) => ({ ...e, cf: undefined })); }} error={fieldErr.cf} />
               <button disabled={status === 'loading'} className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 disabled:opacity-70 text-black font-bold py-3.5 rounded-xl transition shadow-[0_8px_30px_rgba(34,197,94,0.25)]">
-                {status === 'loading' ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Building…</> : <>Make my wallpaper <ArrowRight className="w-4 h-4" /></>}
+                {status === 'loading' ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Building…</> : formNotice.startsWith('Your wallpaper is ready') ? <><Check className="w-4 h-4" /> Wallpaper ready</> : <>Make my wallpaper <ArrowRight className="w-4 h-4" /> </>}
               </button>
-              {fieldErr.form && <p className="px-2 pt-1 text-sm text-red-400">{fieldErr.form}</p>}
+              {fieldErr.form && <p aria-live="polite" className="px-2 pt-1 text-sm text-red-400">{fieldErr.form}</p>}
+              {formNotice && <p aria-live="polite" className={`px-2 pt-1 text-sm ${formNotice.startsWith('Your wallpaper is ready') ? 'text-green-400' : status === 'loading' ? 'text-zinc-400' : 'text-red-400'}`}>{formNotice}</p>}
             </form>
 
             <p className="mt-4 max-w-lg flex items-center gap-2 text-xs text-zinc-500">
@@ -230,8 +245,8 @@ function Setup({ params }) {
                       src={previewUrl}
                       alt="Your wallpaper preview"
                       className={`sw-reveal w-full h-full object-cover transition-opacity duration-500 ${status === 'loading' ? 'opacity-40' : 'opacity-100'}`}
-                      onLoad={() => { loadedUrl.current = previewUrl; inFlight.current = ''; setStatus('ok'); if (scrollOnLoad.current && window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); scrollOnLoad.current = false; }}
-                      onError={() => { loadedUrl.current = ''; inFlight.current = ''; setStatus('error'); }}
+                      onLoad={() => { loadedUrl.current = previewUrl; inFlight.current = ''; setStatus('ok'); if (scrollOnLoad.current) { setFormNotice('Your wallpaper is ready. Preview and setup are beside the form.'); if (window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } scrollOnLoad.current = false; }}
+                      onError={() => { loadedUrl.current = ''; inFlight.current = ''; setStatus('error'); if (scrollOnLoad.current) setFormNotice('Could not build the wallpaper. Check the username and try again.'); scrollOnLoad.current = false; }}
                     />
                   ) : (
                     <>
@@ -242,7 +257,7 @@ function Setup({ params }) {
                 </div>
               </div>
             </div></div>
-            {status === 'error' && submitted && !Object.values(fieldErr).some(Boolean) && <p className="text-center text-sm text-red-400 mt-4">Couldn't build the wallpaper. Try again in a minute.</p>}
+            {status === 'error' && submitted && !formNotice && !Object.values(fieldErr).some(Boolean) && <p className="text-center text-sm text-red-400 mt-4">Couldn't build the wallpaper. Try again in a minute.</p>}
 
             {status === 'ok' && (
               <div className="sw-rise mt-10 mx-auto max-w-md bg-zinc-950/90 border border-zinc-900 rounded-2xl p-5 backdrop-blur">
@@ -276,7 +291,7 @@ function Setup({ params }) {
                     <Steps items={[
                       'Install MacroDroid (free) from the Play Store.',
                       desktop ? 'Scan the QR code, tap "Download for Android" on your phone, then import StreakWall.macro into MacroDroid.' : 'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
-                      'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
+                      'One time only: edit Set Wallpaper, choose Downloads, then tap Use this folder → Allow. MacroDroid can now save and set wallpapers automatically.',
                     ]} />
                     <button onClick={copy} className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 transition">
                       {copied ? <><Check className="w-4 h-4 text-green-400" /> Copied</> : <><Copy className="w-4 h-4" /> Copy wallpaper link (advanced)</>}
