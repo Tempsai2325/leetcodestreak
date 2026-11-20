@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, GitBranch as Github } from 'lucide-react';
+import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, Download, GitBranch as Github } from 'lucide-react';
+import { downloadMacro } from './macro';
 
 // ── Helpers ─────────────────────────────────────────────────
 const detectOS = () => {
@@ -145,7 +146,12 @@ function Setup({ params }) {
                   <Tab active={os === 'android'} onClick={() => setOs('android')} icon={<Smartphone className="w-4 h-4" />}>Android</Tab>
                 </div>
 
-                <button onClick={copy} className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3 rounded-xl mb-5">
+                {os === 'android' && (
+                  <button onClick={() => downloadMacro(wallpaperUrl)} className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 text-black font-bold py-3 rounded-xl mb-3">
+                    <Download className="w-4 h-4" /> Download for Android
+                  </button>
+                )}
+                <button onClick={copy} className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl mb-5 ${os === 'android' ? 'bg-zinc-900 text-zinc-200 border border-zinc-800' : 'bg-white text-black'}`}>
                   {copied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy my wallpaper link</>}
                 </button>
 
@@ -158,10 +164,10 @@ function Setup({ params }) {
                   ]} />
                 ) : (
                   <Steps items={[
-                    'Install MacroDroid (free) and create a new macro.',
-                    'Trigger: Regular Interval → every 3 hours.',
-                    'Action: HTTP Request → GET your link → save response to file "streakwall.png".',
-                    'Action: Set Wallpaper → Image → that file → Lock screen.',
+                    'Install MacroDroid (free) from the Play Store.',
+                    'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
+                    'If MacroDroid asks, allow access to your Download folder. It updates on unlock, 4 times a day and after reboot.',
+                    'Settings → Battery → MacroDroid → Unrestricted, so your phone never pauses it.',
                   ]} />
                 )}
 
