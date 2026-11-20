@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, Download, GitBranch as Github } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ShieldCheck, Smartphone, Apple, Copy, Check, Code2, Trophy, BatteryFull, Zap, Download, GitBranch as Github, ArrowRight } from 'lucide-react';
 import { downloadMacro } from './macro';
 import QRCode from 'qrcode';
 
@@ -76,16 +76,50 @@ function Setup({ params }) {
     QRCode.toDataURL(`${window.location.origin}/?${q}`, { margin: 1, width: 360, color: { dark: '#000000', light: '#ffffff' } }).then(setQr).catch(() => setQr(''));
   }, [desktop, submitted]);
 
-  const submit = (e) => {
-    e?.preventDefault();
+  const [fieldErr, setFieldErr] = useState({});
+  const previewRef = useRef(null);
+  const scrollOnLoad = useRef(false);
+
+  const submit = async (e, quiet = false) => {
+    e?.preventDefault?.();
     const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
     if (!next.lc && !next.gh && !next.cf) return;
-    localStorage.setItem(STORAGE, JSON.stringify(next));
+    if (!quiet) setFieldErr({});
     setStatus('loading');
+    // Check every username before building, so a typo never fails silently.
+    const names = { lc: 'LeetCode', gh: 'GitHub', cf: 'Codeforces' };
+    const keys = { lc: 'leetcode', gh: 'github', cf: 'codeforces' };
+    try {
+      const q = new URLSearchParams(Object.entries(next).filter(([, v]) => v));
+      const res = await fetch(`/api/stats?${q}`);
+      const data = res.ok ? await res.json() : null;
+      const errs = {};
+      for (const k of ['lc', 'gh', 'cf']) {
+        if (next[k] && (!data || !data[keys[k]])) errs[k] = `No ${names[k]} profile called "${next[k]}". Check the spelling.`;
+      }
+      if (Object.keys(errs).length) { if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; } setFieldErr(errs); setStatus('error'); return; }
+    } catch {
+      if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; }
+      setFieldErr({ form: 'Could not reach the server. Check your internet and try again.' });
+      setStatus('error');
+      return;
+    }
+    localStorage.setItem(STORAGE, JSON.stringify(next));
+    setFieldErr({});
+    scrollOnLoad.current = !quiet && e != null;
     setSubmitted(next);
   };
 
   useEffect(() => { if (saved.lc || saved.gh || saved.cf || params.get('lc') || params.get('gh') || params.get('cf') || params.get('user')) submit(); }, []); // eslint-disable-line
+
+  // Live preview: a moment after the user stops typing, build their wallpaper.
+  useEffect(() => {
+    const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
+    if (![next.lc, next.gh, next.cf].some((v) => v.length >= 3)) return;
+    if (submitted && next.lc === submitted.lc && next.gh === submitted.gh && next.cf === submitted.cf) return;
+    const t = setTimeout(() => submit(null, true), 900);
+    return () => clearTimeout(t);
+  }, [lc, gh, cf]); // eslint-disable-line
 
   const copy = async () => {
     await navigator.clipboard.writeText(wallpaperUrl);
@@ -94,67 +128,99 @@ function Setup({ params }) {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-200 font-sans">
-      <div className="max-w-6xl mx-auto px-5 md:px-10 py-10 md:py-14">
+    <div className="relative min-h-screen bg-black text-zinc-200 font-sans overflow-x-hidden">
+      {/* Background: faint dot grid + green glow */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(#1f1f1f_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
+      <div aria-hidden className="pointer-events-none absolute -top-40 right-[-10%] w-[640px] h-[640px] rounded-full bg-green-500/10 blur-[120px]" />
+
+      <div className="relative max-w-6xl mx-auto px-5 md:px-10 py-8 md:py-12">
         {/* Header */}
-        <header className="flex items-center justify-between mb-12 md:mb-20">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center"><Zap className="w-5 h-5 text-black" /></div>
-            <span className="text-xl font-black text-white tracking-tight">StreakWall</span>
+        <header className="flex items-center justify-between mb-12 md:mb-16">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-green-500 flex items-center justify-center shadow-[0_0_24px_rgba(34,197,94,0.45)]"><Zap className="w-5 h-5 text-black" /></div>
+            <span className="text-lg font-black text-white tracking-tight">StreakWall</span>
           </div>
-          <a href="https://github.com/Tempsai2325/leetcodestreak" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white">
+          <a href="https://github.com/Tempsai2325/leetcodestreak" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600 rounded-full px-3.5 py-1.5 transition">
             <Github className="w-4 h-4" /> Open source
           </a>
         </header>
 
-        <div className="grid md:grid-cols-[1.1fr_1fr] gap-12 lg:gap-20 items-start">
+        <div className="grid md:grid-cols-[1.15fr_1fr] gap-12 lg:gap-16 items-start">
           {/* Left: pitch + form */}
           <div className="md:sticky md:top-10">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.05] tracking-tight">
-              Your dev grind,<br /><span className="text-green-500 lg:whitespace-nowrap">on your lock screen.</span>
+            <div className="sw-rise inline-flex items-center gap-2 text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/25 rounded-full px-3 py-1">
+              <span className="relative flex w-2 h-2"><span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-60" /><span className="relative w-2 h-2 rounded-full bg-green-400" /></span>
+              Free · Android · updates itself
+            </div>
+            <h1 className="sw-rise [animation-delay:80ms] mt-5 text-[2.25rem] sm:text-[2.6rem] md:text-5xl lg:text-6xl font-black text-white leading-[1.03] tracking-tight">
+              Your dev grind,<br /><span className="bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent lg:whitespace-nowrap">on your lock screen.</span>
             </h1>
-            <p className="mt-5 text-zinc-400 md:text-lg max-w-lg">
-              A live wallpaper with your coding streak across LeetCode, GitHub and Codeforces. It turns red before the daily reset so you never break the chain.
+            <p className="sw-rise [animation-delay:160ms] mt-5 text-zinc-400 md:text-lg max-w-lg leading-relaxed">
+              Every time you unlock your phone, you see your streak and a year of coding. It turns red before the daily reset, so you never break the chain.
             </p>
 
-            <form onSubmit={submit} className="mt-8 space-y-3 max-w-lg">
-              <Field icon={<Trophy className="w-4 h-4 text-yellow-400" />} placeholder="LeetCode username" value={lc} onChange={setLc} />
-              <Field icon={<Github className="w-4 h-4 text-zinc-300" />} placeholder="GitHub username (optional)" value={gh} onChange={setGh} />
-              <Field icon={<Code2 className="w-4 h-4 text-blue-400" />} placeholder="Codeforces handle (optional)" value={cf} onChange={setCf} />
-              <button className="w-full bg-green-500 hover:bg-green-400 text-black font-bold py-3.5 rounded-xl transition">
-                Make my wallpaper
+            <form onSubmit={submit} className="sw-rise [animation-delay:240ms] mt-8 max-w-lg p-2 rounded-2xl bg-zinc-950/80 border border-zinc-900 backdrop-blur space-y-2">
+              <Field icon={<Trophy className="w-4 h-4 text-yellow-400" />} placeholder="LeetCode username" value={lc} onChange={(v) => { setLc(v); setFieldErr((e) => ({ ...e, lc: undefined })); }} error={fieldErr.lc} />
+              <Field icon={<Github className="w-4 h-4 text-zinc-300" />} placeholder="GitHub username" optional value={gh} onChange={(v) => { setGh(v); setFieldErr((e) => ({ ...e, gh: undefined })); }} error={fieldErr.gh} />
+              <Field icon={<Code2 className="w-4 h-4 text-blue-400" />} placeholder="Codeforces handle" optional value={cf} onChange={(v) => { setCf(v); setFieldErr((e) => ({ ...e, cf: undefined })); }} error={fieldErr.cf} />
+              <button disabled={status === 'loading'} className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 disabled:opacity-70 text-black font-bold py-3.5 rounded-xl transition shadow-[0_8px_30px_rgba(34,197,94,0.25)]">
+                {status === 'loading' ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Building…</> : <>Make my wallpaper <ArrowRight className="w-4 h-4" /></>}
               </button>
+              {fieldErr.form && <p className="px-2 pt-1 text-sm text-red-400">{fieldErr.form}</p>}
             </form>
 
-            {/* Trust line */}
-            <div className="mt-6 max-w-lg flex items-start gap-3 text-sm text-zinc-400 bg-zinc-950 border border-zinc-900 rounded-xl p-4">
-              <ShieldCheck className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
-              <span><b className="text-zinc-200">No login. No password. No tracking.</b> We only read your public profile stats. Your usernames stay on this device.</span>
+            <p className="mt-4 max-w-lg flex items-center gap-2 text-xs text-zinc-500">
+              <ShieldCheck className="w-4 h-4 text-green-500 shrink-0" />
+              No login. No password. No tracking. Only public profile stats. Usernames stay on this device.
+            </p>
+
+            {/* How it works */}
+            <div className="sw-rise [animation-delay:320ms] mt-10 grid grid-cols-3 gap-3 max-w-lg">
+              {[
+                ['1', 'Add usernames', 'LeetCode, GitHub, Codeforces'],
+                ['2', 'Import macro', 'One file into MacroDroid'],
+                ['3', 'Unlock phone', 'Wallpaper updates itself'],
+              ].map(([n, t, d]) => (
+                <div key={n} className="hover:-translate-y-0.5 hover:border-zinc-700 transition rounded-xl border border-zinc-900 bg-zinc-950/60 p-3">
+                  <div className="text-green-400 text-xs font-black">0{n}</div>
+                  <div className="mt-1 text-sm font-bold text-white leading-tight">{t}</div>
+                  <div className="hidden sm:block mt-1 text-[11px] text-zinc-500 leading-snug">{d}</div>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Right: preview + setup */}
           <div>
-            <div className="mx-auto w-[260px] lg:w-[290px] rounded-[2.6rem] border-[6px] border-zinc-800 bg-black overflow-hidden aspect-[9/19.5] flex items-center justify-center">
-              {submitted ? (
-                <img
-                  key={wallpaperUrl}
-                  src={wallpaperUrl}
-                  alt="Your wallpaper preview"
-                  className={`w-full h-full object-cover transition-opacity ${status === 'loading' ? 'opacity-30' : 'opacity-100'}`}
-                  onLoad={() => setStatus('ok')}
-                  onError={() => setStatus('error')}
-                />
-              ) : (
-                <span className="text-zinc-600 text-sm px-8 text-center">Your preview shows up here</span>
-              )}
-            </div>
-            {status === 'loading' && <p className="text-center text-sm text-zinc-500 mt-3">Building your wallpaper…</p>}
-            {status === 'error' && <p className="text-center text-sm text-red-400 mt-3">Couldn't find that profile. Check the username.</p>}
+            <p ref={previewRef} className="sw-rise [animation-delay:200ms] scroll-mt-4 mb-5 text-center text-xs font-semibold tracking-wide text-zinc-500">{submitted ? (status === 'loading' ? 'Building your wallpaper…' : 'Your live wallpaper') : 'Sample · type your username to see yours'}</p>
+            <div className="sw-rise [animation-delay:200ms] relative mx-auto w-[250px] lg:w-[280px]"><div className="sw-float">
+              <div aria-hidden className="sw-glow absolute -inset-10 rounded-full bg-green-500/15 blur-3xl" />
+              <div className="relative rounded-[2.8rem] p-[7px] bg-gradient-to-b from-zinc-700 to-zinc-900 shadow-2xl">
+                <div className="relative rounded-[2.4rem] bg-black overflow-hidden aspect-[9/19.5]">
+                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10 border border-zinc-900" />
+                  {submitted ? (
+                    <img
+                      key={wallpaperUrl}
+                      src={wallpaperUrl}
+                      alt="Your wallpaper preview"
+                      className={`sw-reveal w-full h-full object-cover transition-opacity duration-500 ${status === 'loading' ? 'opacity-40' : 'opacity-100'}`}
+                      onLoad={() => { setStatus('ok'); if (scrollOnLoad.current && window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); scrollOnLoad.current = false; }}
+                      onError={() => setStatus('error')}
+                    />
+                  ) : (
+                    <>
+                      <img src="/sample-wallpaper.jpg" alt="Sample StreakWall wallpaper" className="w-full h-full object-cover" />
+                    </>
+                  )}
+                  {status === 'loading' && <div className="sw-scan absolute inset-0 pointer-events-none" />}
+                </div>
+              </div>
+            </div></div>
+            {status === 'error' && submitted && !Object.values(fieldErr).some(Boolean) && <p className="text-center text-sm text-red-400 mt-4">Couldn't build the wallpaper. Try again in a minute.</p>}
 
             {status === 'ok' && (
-              <div className="mt-8 mx-auto max-w-md bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
-                <div className="flex gap-2 mb-5">
+              <div className="sw-rise mt-10 mx-auto max-w-md bg-zinc-950/90 border border-zinc-900 rounded-2xl p-5 backdrop-blur">
+                <div className="flex gap-1 mb-5 p-1 rounded-xl bg-zinc-900/70">
                   <Tab active={os === 'android'} onClick={() => setOs('android')} icon={<Smartphone className="w-4 h-4" />}>Android</Tab>
                   <Tab active={os === 'ios'} onClick={() => setOs('ios')} icon={<Apple className="w-4 h-4" />}>iPhone <span className="ml-1 text-[10px] font-bold uppercase bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded">Soon</span></Tab>
                 </div>
@@ -181,14 +247,14 @@ function Setup({ params }) {
                   </div>
                 ) : (
                   <>
-                    <button onClick={copy} className="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl mb-5 bg-zinc-900 text-zinc-200 border border-zinc-800">
-                      {copied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy my wallpaper link</>}
-                    </button>
                     <Steps items={[
                       'Install MacroDroid (free) from the Play Store.',
                       desktop ? 'Scan the QR code, tap "Download for Android" on your phone, then import StreakWall.macro into MacroDroid.' : 'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
                       'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
                     ]} />
+                    <button onClick={copy} className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 transition">
+                      {copied ? <><Check className="w-4 h-4 text-green-400" /> Copied</> : <><Copy className="w-4 h-4" /> Copy wallpaper link (advanced)</>}
+                    </button>
                   </>
                 )}
 
@@ -199,7 +265,7 @@ function Setup({ params }) {
                   </details>
                 )}
 
-                {os === 'android' && <div className="mt-5 flex items-center gap-2 text-xs text-zinc-500">
+                {os === 'android' && <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
                   <BatteryFull className="w-4 h-4 text-green-500" />
                   A few tiny image downloads a day. Unchanged wallpapers download zero bytes.
                 </div>}
@@ -208,17 +274,19 @@ function Setup({ params }) {
           </div>
         </div>
 
-        <footer className="mt-20 text-center text-xs text-zinc-600">
-          Made by students, for students. Not affiliated with LeetCode, GitHub or Codeforces.
+        <footer className="mt-20 pt-6 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-zinc-600">
+          <span>Made by students, for students.</span>
+          <span>Not affiliated with LeetCode, GitHub or Codeforces.</span>
         </footer>
       </div>
     </div>
   );
 }
 
-function Field({ icon, placeholder, value, onChange }) {
+function Field({ icon, placeholder, value, onChange, optional, error }) {
   return (
-    <label className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 focus-within:border-green-500 rounded-xl px-4 py-3">
+    <div>
+    <label className={`flex items-center gap-3 bg-black/60 border ${error ? 'border-red-500/70' : 'border-zinc-800'} focus-within:border-green-500 focus-within:ring-2 focus-within:ring-green-500/20 rounded-xl px-4 py-3 transition`}>
       {icon}
       <input
         value={value}
@@ -229,13 +297,16 @@ function Field({ icon, placeholder, value, onChange }) {
         spellCheck="false"
         className="bg-transparent outline-none w-full text-white placeholder:text-zinc-600"
       />
+      {optional && <span className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">optional</span>}
     </label>
+    {error && <p className="px-2 pt-1.5 text-xs text-red-400">{error}</p>}
+    </div>
   );
 }
 
 function Tab({ active, onClick, icon, children }) {
   return (
-    <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold ${active ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>
+    <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold ${active ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>
       {icon}{children}
     </button>
   );
