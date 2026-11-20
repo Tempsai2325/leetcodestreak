@@ -10,9 +10,9 @@ StreakWall turns your coding activity into a live phone wallpaper: your streak, 
 
 ## Setup (1 minute)
 
-1. Open the site, enter your usernames, and copy your wallpaper link.
-2. **iPhone:** Shortcuts → Automation → Time of Day → "Get Contents of URL" (your link) → "Set Wallpaper" (Lock Screen). Add 2 or 3 times a day.
-3. **Android:** in MacroDroid, set Regular Interval (3h) → HTTP Request (save to `streakwall.png`) → Set Wallpaper from that file.
+1. Open the site and enter your usernames.
+2. **Android:** install MacroDroid (free), tap **Download for Android**, and import `StreakWall.macro`. It updates when you unlock your phone (at most every 30 min), 4 times a day, and after a reboot.
+3. **iPhone:** coming soon.
 
 ## API
 

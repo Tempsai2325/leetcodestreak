@@ -6,8 +6,7 @@ import { downloadMacro } from './macro';
 const detectOS = () => {
   const ua = navigator.userAgent || '';
   if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
-  if (/Android/i.test(ua)) return 'android';
-  return 'ios';
+  return 'android'; // iPhone is coming soon, so default to Android
 };
 
 // Real pixel size of this phone's screen (portrait). Desktop falls back to a common phone size.
@@ -142,8 +141,8 @@ function Setup({ params }) {
             {status === 'ok' && (
               <div className="mt-8 bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
                 <div className="flex gap-2 mb-5">
-                  <Tab active={os === 'ios'} onClick={() => setOs('ios')} icon={<Apple className="w-4 h-4" />}>iPhone</Tab>
                   <Tab active={os === 'android'} onClick={() => setOs('android')} icon={<Smartphone className="w-4 h-4" />}>Android</Tab>
+                  <Tab active={os === 'ios'} onClick={() => setOs('ios')} icon={<Apple className="w-4 h-4" />}>iPhone <span className="ml-1 text-[10px] font-bold uppercase bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded">Soon</span></Tab>
                 </div>
 
                 {os === 'android' && (
@@ -151,23 +150,23 @@ function Setup({ params }) {
                     <Download className="w-4 h-4" /> Download for Android
                   </button>
                 )}
-                <button onClick={copy} className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl mb-5 ${os === 'android' ? 'bg-zinc-900 text-zinc-200 border border-zinc-800' : 'bg-white text-black'}`}>
-                  {copied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy my wallpaper link</>}
-                </button>
-
                 {os === 'ios' ? (
-                  <Steps items={[
-                    'Open Shortcuts → Automation → + → Time of Day (e.g. 8 AM). Choose "Run Immediately".',
-                    'Add action "Get Contents of URL" and paste your link.',
-                    'Add action "Set Wallpaper" → Lock Screen. Turn off "Show Preview".',
-                    'Repeat for 6 PM and 11 PM. That\u2019s it.',
-                  ]} />
+                  <div className="text-center py-6">
+                    <Apple className="w-8 h-8 mx-auto text-zinc-500" />
+                    <p className="mt-3 font-bold text-white">iPhone is coming soon</p>
+                    <p className="mt-1 text-sm text-zinc-400">We're building a one-tap Shortcut. Android works today.</p>
+                  </div>
                 ) : (
-                  <Steps items={[
-                    'Install MacroDroid (free) from the Play Store.',
-                    'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
-                    'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
-                  ]} />
+                  <>
+                    <button onClick={copy} className="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl mb-5 bg-zinc-900 text-zinc-200 border border-zinc-800">
+                      {copied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy my wallpaper link</>}
+                    </button>
+                    <Steps items={[
+                      'Install MacroDroid (free) from the Play Store.',
+                      'Tap "Download for Android", then open StreakWall.macro and import it into MacroDroid.',
+                      'If MacroDroid asks, allow access to your Download folder. Done. It sleeps until you unlock your phone, then grabs a tiny image.',
+                    ]} />
+                  </>
                 )}
 
                 {os === 'android' && (
@@ -177,10 +176,10 @@ function Setup({ params }) {
                   </details>
                 )}
 
-                <div className="mt-5 flex items-center gap-2 text-xs text-zinc-500">
+                {os === 'android' && <div className="mt-5 flex items-center gap-2 text-xs text-zinc-500">
                   <BatteryFull className="w-4 h-4 text-green-500" />
                   A few tiny image downloads a day. Unchanged wallpapers download zero bytes.
-                </div>
+                </div>}
               </div>
             )}
           </div>
