@@ -85,11 +85,18 @@ function Setup({ params }) {
   const [fieldErr, setFieldErr] = useState({});
   const previewRef = useRef(null);
   const scrollOnLoad = useRef(false);
+  const loadedUrl = useRef('');
+  const inFlight = useRef('');
 
   const submit = async (e, quiet = false) => {
     e?.preventDefault?.();
     const next = { lc: clean(lc), gh: clean(gh), cf: clean(cf) };
     if (!next.lc && !next.gh && !next.cf) return;
+    const target = wallUrl(next, size, 540);
+    // Same wallpaper already showing: nothing to rebuild (the <img> would never fire onLoad again).
+    if (target === loadedUrl.current) { setFieldErr({}); setStatus('ok'); return; }
+    if (inFlight.current === target) return;
+    inFlight.current = target;
     if (!quiet) setFieldErr({});
     setStatus('loading');
     // Check every username before building, so a typo never fails silently.
@@ -98,15 +105,17 @@ function Setup({ params }) {
     try {
       const q = new URLSearchParams(Object.entries(next).filter(([, v]) => v));
       // Start rendering the preview while the usernames are checked, so both happen at once.
-      new Image().src = wallUrl(next, size, 540);
+      new Image().src = target;
       const res = await fetch(`/api/stats?${q}`);
       const data = res.ok ? await res.json() : null;
       const errs = {};
       for (const k of ['lc', 'gh', 'cf']) {
         if (next[k] && (!data || !data[keys[k]])) errs[k] = `No ${names[k]} profile called "${next[k]}". Check the spelling.`;
       }
+      inFlight.current = '';
       if (Object.keys(errs).length) { if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; } setFieldErr(errs); setStatus('error'); return; }
     } catch {
+      inFlight.current = '';
       if (quiet) { setStatus(submitted ? 'ok' : 'idle'); return; }
       setFieldErr({ form: 'Could not reach the server. Check your internet and try again.' });
       setStatus('error');
@@ -114,11 +123,20 @@ function Setup({ params }) {
     }
     localStorage.setItem(STORAGE, JSON.stringify(next));
     setFieldErr({});
+    // The image may have finished while we were checking usernames.
+    if (target === loadedUrl.current) { inFlight.current = ''; setStatus('ok'); return; }
     scrollOnLoad.current = !quiet && e != null;
     setSubmitted(next);
   };
 
   useEffect(() => { if (saved.lc || saved.gh || saved.cf || params.get('lc') || params.get('gh') || params.get('cf') || params.get('user')) submit(); }, []); // eslint-disable-line
+
+  // Never spin forever: after 25 s, stop and say so.
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const t = setTimeout(() => { inFlight.current = ''; setStatus('error'); setFieldErr({ form: 'That took too long. Tap the button to try again.' }); }, 25000);
+    return () => clearTimeout(t);
+  }, [status]);
 
   // Live preview: a moment after the user stops typing, build their wallpaper.
   useEffect(() => {
@@ -212,8 +230,8 @@ function Setup({ params }) {
                       src={previewUrl}
                       alt="Your wallpaper preview"
                       className={`sw-reveal w-full h-full object-cover transition-opacity duration-500 ${status === 'loading' ? 'opacity-40' : 'opacity-100'}`}
-                      onLoad={() => { setStatus('ok'); if (scrollOnLoad.current && window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); scrollOnLoad.current = false; }}
-                      onError={() => setStatus('error')}
+                      onLoad={() => { loadedUrl.current = previewUrl; inFlight.current = ''; setStatus('ok'); if (scrollOnLoad.current && window.innerWidth < 768) previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); scrollOnLoad.current = false; }}
+                      onError={() => { loadedUrl.current = ''; inFlight.current = ''; setStatus('error'); }}
                     />
                   ) : (
                     <>
